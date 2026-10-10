@@ -1,9 +1,9 @@
-function TopBar({ activeChannel }) {
+function TopBar({ activeChannel, currentUser }) {
     return (
         <header className="top-bar">
             <div>
                 <h2># {activeChannel}</h2>
-                <span>12 members</span>
+                <span>{currentUser?.username || "Loading..."}</span>
             </div>
 
             <div className="connection-status">

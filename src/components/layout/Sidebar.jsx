@@ -5,20 +5,37 @@ import {
     Command,
     Settings,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getAllUsers } from "../../api/user";
 
-function Sidebar({ activeChannel, onChannelChange }) {
+function Sidebar({ activeChannel, onChannelChange, activeDM, onDMChange, currentUser, onLogout }) {
     const channels = [
-        "general", 
+        "general",
         "engineering",
         "security",
         "random",
     ];
+    
+    const [directMessages, setDirectMessages] = useState([]);
+    const [usersError, setUsersError] = useState("");
 
-    const directMessages = [
-        "Alice",
-        "Bob", 
-        "Charlie",
-    ];
+    useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                const token = localStorage.getItem("token");
+                if (!token) return;
+
+                const users = await getAllUsers(token);
+                setDirectMessages(users);
+                setUsersError("");
+            } catch (error) {
+                console.error("Failed to load users:", error);
+                setUsersError("Could not load users");
+            }
+        };
+
+        loadUsers();
+    }, []);
 
     return (
         <aside className="sidebar">
@@ -39,12 +56,21 @@ function Sidebar({ activeChannel, onChannelChange }) {
             <div className="direct-messages">
                 <h3>DIRECT MESSAGES</h3>
 
+                {usersError && <p>{usersError}</p>}
+
                 {directMessages.map((user) => (
-                    <div className="sidebar-item" key={user}>
+                    <div
+                        className={`sidebar-item ${
+                            activeDM === user.username ? "active" : ""
+                        }`}
+                        key={user._id}
+                        onClick={() => onDMChange(user.username)}
+                    >
                         <span>●</span>
-                        <span>{user}</span>
+                        <span>{user.username}</span>
                     </div>
                 ))}
+
             </div>
 
             <div className="system">
@@ -72,8 +98,11 @@ function Sidebar({ activeChannel, onChannelChange }) {
             </div>
 
             <div className="user-profile">
-                <div>● user@arch</div>
+                <div className="username">
+                    {currentUser?.username || "Loading..."}
+                </div>
                 <span>Online</span>
+                <button onClick={onLogout}>Logout</button>
             </div>
         </aside>
     );

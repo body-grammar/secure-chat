@@ -1,14 +1,26 @@
-function MessageList({ messages }) {
+function MessageList({ messages = [] }) {
+    const safeMessages = Array.isArray(messages) ? messages : [];
+
     return (
         <div className="message-list">
-            {messages.map((message) => (
-                <div className="message" key={message.id}>
-                    <div className="message-meta">
-                        <strong>{message.user}</strong>
-                        <span>{message.time}</span>
-                    </div>
+            {safeMessages.map((message) => (
+                <div key={message._id || message.id}>
+                    <strong>
+                        {message.sender?.username || message.user}
+                    </strong>
 
-                    <p>{message.text}</p>
+                    <p>
+                        {message.content || message.text}
+                    </p>
+
+                    <span>
+                        {message.createdAt
+                            ? new Date(message.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                            })
+                            : message.time}
+                    </span>
                 </div>
             ))}
         </div>
