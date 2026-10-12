@@ -36,6 +36,7 @@ function Login({ onLogin }) {
             }
 
             localStorage.setItem("token", data.token);
+            localStorage.setItem("userId", data.user.id);
 
             console.log("Login successful");
 

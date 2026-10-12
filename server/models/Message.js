@@ -22,7 +22,6 @@ const messageSchema = new mongoose.Schema(
     content: {
       type: String,
       required: true,
-      trim: true,
     },
 
     encryption: {
@@ -38,6 +37,20 @@ const messageSchema = new mongoose.Schema(
         type: Number,
         default: null,
       },
+      senderContent: {
+        type: String,
+        default: null,
+      },
+      recipientContent: {
+        type: String,
+        default: null,
+      },
+    },
+
+    status: {
+      type: String,
+      enum: ["sent", "delivered", "read"],
+      default: "sent",
     },
 
   },

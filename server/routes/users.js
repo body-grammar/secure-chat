@@ -174,7 +174,6 @@ router.get("/username/:username", authMiddleware, async (req, res) => {
     }
 });
 
-
 router.put("/public-key", authMiddleware, async (req, res) => {
   try {
     const { publicKey } = req.body;
@@ -189,20 +188,33 @@ router.put("/public-key", authMiddleware, async (req, res) => {
       });
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.user.userId,
-      { publicKey },
-      { new: true, runValidators: true }
-    ).select("_id username publicKey publicKeyVersion");
+    const user = await User.findById(req.user.userId).select(
+      "_id username publicKey publicKeyVersion"
+    );
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
-    res.json({ user });
+    // Allow the first public key to be registered.
+    if (!user.publicKey) {
+      user.publicKey = publicKey;
+      await user.save();
+    } else if (user.publicKey !== publicKey) {
+      // Never silently replace an existing encryption key.
+      return res.status(409).json({
+        message:
+          "A different public key is already registered. Key replacement requires a separate recovery process.",
+      });
+    }
+
+    return res.json({ user });
   } catch (error) {
     console.error("Public key registration error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       message: "Failed to register public key",
     });
   }

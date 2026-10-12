@@ -53,6 +53,61 @@ router.get("/:channel", authMiddleware, async (req, res) => {
   }
 });
 
+router.patch("/:messageId/status", authMiddleware, async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!["delivered", "read"].includes(status)) {
+      return res.status(400).json({
+        message: "Status must be delivered or read",
+      });
+    }
+
+    const message = await Message.findById(req.params.messageId);
+
+    if (!message) {
+      return res.status(404).json({
+        message: "Message not found",
+      });
+    }
+
+    // Only the recipient can acknowledge a direct message.
+    if (
+      !message.recipient ||
+      message.recipient.toString() !== req.user.userId
+    ) {
+      return res.status(403).json({
+        message: "Only the recipient can update this message status",
+      });
+    }
+
+    // Status can advance from sent → delivered → read, never backwards.
+    const rank = { sent: 0, delivered: 1, read: 2 };
+
+    if (rank[status] > rank[message.status]) {
+      message.status = status;
+      await message.save();
+    }
+
+    // Notify the original sender in real time.
+    const io = req.app.get("io");
+
+    io.to(`user:${message.sender.toString()}`).emit(
+      "messageStatusUpdated",
+      {
+        messageId: message._id.toString(),
+        status: message.status,
+      }
+    );
+
+    return res.json({ message });
+  } catch (error) {
+    console.error("Update message status error:", error);
+    return res.status(500).json({
+      message: "Failed to update message status",
+    });
+  }
+});
 
 router.post("/", authMiddleware, async (req, res) => {
   try {
@@ -89,12 +144,14 @@ router.post("/", authMiddleware, async (req, res) => {
       channel: channel || undefined,
       content,
       encryption: encryption
-        ? {
-            algorithm: encryption.algorithm,
-            nonce: null,
-            version: encryption.version,
-          }
-        : undefined,
+      ? {
+          algorithm: encryption.algorithm,
+          nonce: null,
+          version: encryption.version,
+          senderContent: encryption.senderContent || null,
+          recipientContent: encryption.recipientContent || null,
+        }
+      : undefined,
     });
 
     res.status(201).json({ message });

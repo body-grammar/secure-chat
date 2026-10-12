@@ -180,7 +180,6 @@ export async function encryptMessageForRecipient(
   }
 }
 
-
 export async function decryptMessageForMe(
   encryptedContent,
   encryptionKeyPair
@@ -196,6 +195,17 @@ export async function decryptMessageForMe(
 
   const publicKey = sodium.from_base64(encryptionKeyPair.publicKey);
   const privateKey = sodium.from_base64(encryptionKeyPair.privateKey);
+
+  // Verify that the public and private keys belong together.
+  const derivedPublicKey = sodium.crypto_scalarmult_base(privateKey);
+
+  console.log(
+    "Vault public/private keys match:",
+    sodium.memcmp(publicKey, derivedPublicKey)
+  );
+
+  sodium.memzero(derivedPublicKey);
+
   const ciphertext = sodium.from_base64(encryptedContent);
 
   try {
@@ -214,6 +224,38 @@ export async function decryptMessageForMe(
     throw new Error(
       "Unable to decrypt this message with your current key."
     );
+  } finally {
+    sodium.memzero(privateKey);
+  }
+}
+
+export async function testEncryptionRoundTrip(publicKeyBase64, privateKeyBase64) {
+  await sodium.ready;
+
+  const testText = "NEXUS encryption test";
+  const publicKey = sodium.from_base64(publicKeyBase64);
+  const privateKey = sodium.from_base64(privateKeyBase64);
+
+  try {
+    const ciphertext = sodium.crypto_box_seal(
+      sodium.from_string(testText),
+      publicKey
+    );
+
+    const decrypted = sodium.crypto_box_seal_open(
+      ciphertext,
+      publicKey,
+      privateKey
+    );
+
+    console.log(
+      "Encryption round-trip successful:",
+      sodium.to_string(decrypted) === testText
+    );
+
+    sodium.memzero(decrypted);
+  } catch (error) {
+    console.error("Encryption round-trip failed:", error);
   } finally {
     sodium.memzero(privateKey);
   }

@@ -1,7 +1,12 @@
 
 import { useState } from "react";
 import { ShieldCheck, KeyRound, LockKeyhole } from "lucide-react";
-import { generateKeyPair, saveKeyPair, unlockKeyPair } from "../crypto";
+import {
+  generateKeyPair,
+  saveKeyPair,
+  unlockKeyPair,
+  testEncryptionRoundTrip,
+} from "../crypto";
 import { registerPublicKey } from "../api/user";
 
 export default function KeyVault({ onUnlocked }) {
@@ -44,9 +49,19 @@ async function handleSubmit(event) {
       await saveKeyPair(keyPair, passphrase);
     } else {
       keyPair = await unlockKeyPair(passphrase);
+      await testEncryptionRoundTrip(
+        keyPair.publicKey,
+        keyPair.privateKey
+      );
     }
+    const vaultPublicKey = keyPair.publicKey;
+    console.log("Vault public key length:", vaultPublicKey.length);
+    const serverUser = await registerPublicKey(keyPair.publicKey, token);
 
-    await registerPublicKey(keyPair.publicKey, token);
+    console.log(
+      "Vault public key matches server:",
+      serverUser.publicKey === keyPair.publicKey
+    );
     onUnlocked(keyPair);
   } catch (err) {
     setError(err.message || "Unable to open the key vault.");

@@ -18,6 +18,8 @@ const io = new Server(httpServer, {
   },
 });
 
+app.set("io", io);
+
 io.use((socket, next) => {
   try {
     const token = socket.handshake.auth?.token;

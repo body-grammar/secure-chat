@@ -74,3 +74,25 @@ export const getDirectMessages = async (userId, token) => {
 
   return data.messages;
 };
+
+export const updateMessageStatus = async (messageId, status, token) => {
+  const response = await fetch(
+    `http://localhost:5001/api/messages/${messageId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to update message status");
+  }
+
+  return data.message;
+};
