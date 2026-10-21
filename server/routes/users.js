@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -142,6 +143,32 @@ router.get("/me", authMiddleware, async (req, res) => {
     res.status(500).json({
       message: "Failed to fetch user",
     });
+  }
+});
+
+router.get("/key-fingerprint", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select("publicKey");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.publicKey) {
+      return res.status(404).json({
+        message: "No public key registered for this account"
+      });
+    }
+
+    const fingerprint = createHash("sha256")
+      .update(user.publicKey, "utf8")
+      .digest("hex")
+      .slice(0, 16);
+
+    return res.json({ registeredKeyFingerprint: fingerprint });
+  } catch (error) {
+    console.error("Key fingerprint diagnostic failed:", error);
+    return res.status(500).json({ message: "Diagnostic failed" });
   }
 });
 
