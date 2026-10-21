@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import sodium from "libsodium-wrappers";
 
 const router = express.Router();
 
@@ -60,14 +61,18 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!email || !password) {
+    if (
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof password !== "string" ||
+      !password
+    ) {
       return res.status(400).json({
         message: "Email and password are required",
       });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
     const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
@@ -80,8 +85,6 @@ router.post("/login", async (req, res) => {
       password,
       user.password
     );
-
-    console.log("Password matches:", passwordMatches);
 
     if (!passwordMatches) {
       return res.status(401).json({
@@ -176,20 +179,68 @@ router.get("/username/:username", authMiddleware, async (req, res) => {
 
 router.put("/public-key", authMiddleware, async (req, res) => {
   try {
-    const { publicKey } = req.body;
+    const { publicKey, signingPublicKey } = req.body;
 
-    if (
-      typeof publicKey !== "string" ||
-      publicKey.length < 20 ||
-      publicKey.length > 500
-    ) {
+    if (typeof publicKey !== "string" || !publicKey.trim()) {
       return res.status(400).json({
         message: "A valid public key is required",
       });
     }
 
+    await sodium.ready;
+
+    let decodedPublicKey;
+
+    try {
+      decodedPublicKey = sodium.from_base64(publicKey);
+    } catch {
+      return res.status(400).json({
+        message: "Public key must be valid Base64",
+      });
+    }
+
+    if (decodedPublicKey.length !== sodium.crypto_box_PUBLICKEYBYTES) {
+      return res.status(400).json({
+        message: "A valid 32-byte public key is required",
+      });
+    }
+
+    sodium.memzero(decodedPublicKey);
+
+    if (
+      typeof signingPublicKey !== "string" ||
+      !signingPublicKey.trim()
+    ) {
+      return res.status(400).json({
+        message: "A valid signing public key is required",
+      });
+    }
+
+    let decodedSigningPublicKey;
+
+    try {
+      decodedSigningPublicKey = sodium.from_base64(signingPublicKey);
+    } catch {
+      return res.status(400).json({
+        message: "Signing public key must be valid Base64",
+      });
+    }
+
+    if (
+      decodedSigningPublicKey.length !==
+      sodium.crypto_sign_PUBLICKEYBYTES
+    ) {
+      sodium.memzero(decodedSigningPublicKey);
+
+      return res.status(400).json({
+        message: "A valid 32-byte signing public key is required",
+      });
+    }
+
+    sodium.memzero(decodedSigningPublicKey);
+
     const user = await User.findById(req.user.userId).select(
-      "_id username publicKey publicKeyVersion"
+      "_id username publicKey publicKeyVersion signingPublicKey"
     );
 
     if (!user) {
@@ -210,6 +261,17 @@ router.put("/public-key", authMiddleware, async (req, res) => {
       });
     }
 
+    // ADD THE SIGNING-KEY BLOCK HERE
+    if (!user.signingPublicKey) {
+      user.signingPublicKey = signingPublicKey;
+      await user.save();
+    } else if (user.signingPublicKey !== signingPublicKey) {
+      return res.status(409).json({
+        message:
+          "A different signing public key is already registered. Key replacement requires a separate recovery process.",
+      });
+    }
+
     return res.json({ user });
   } catch (error) {
     console.error("Public key registration error:", error);
@@ -223,7 +285,9 @@ router.put("/public-key", authMiddleware, async (req, res) => {
 router.get("/:userId/public-key", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.params.userId)
-      .select("_id username publicKey publicKeyVersion");
+      .select(
+        "_id username publicKey publicKeyVersion signingPublicKey"
+      );
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -240,6 +304,7 @@ router.get("/:userId/public-key", authMiddleware, async (req, res) => {
       username: user.username,
       publicKey: user.publicKey,
       publicKeyVersion: user.publicKeyVersion,
+      signingPublicKey: user.signingPublicKey,
     });
   } catch (error) {
     console.error("Public key lookup error:", error);

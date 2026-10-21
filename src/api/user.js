@@ -1,19 +1,34 @@
-const API_URL = "http://localhost:5001/api";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
 export const getCurrentUser = async (token) => {
-    const response = await fetch(`${API_URL}/users/me`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-    });
+  const response = await fetch(`${API_URL}/users/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+  });
 
-    if (!response.ok) {
-        throw new Error("Failed to fetch current user");
-    }
+  const body = await response.text();
 
-    const data = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      `GET /users/me failed (${response.status}): ${body}`
+    );
+  }
 
-    return data.user;
+  let data;
+
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error("The server returned an invalid response.");
+  }
+
+  if (!data.user?._id) {
+    throw new Error("The server response does not contain a valid user.");
+  }
+
+  return data.user;
 };
 
 export const getUserByUsername = async (name, token) => {
@@ -35,15 +50,21 @@ export const getUserByUsername = async (name, token) => {
     return data.user;
 };
 
-
-export const registerPublicKey = async (publicKey, token) => {
+export const registerPublicKey = async (
+  publicKey,
+  signingPublicKey,
+  token
+) => {
   const response = await fetch(`${API_URL}/users/public-key`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ publicKey }),
+    body: JSON.stringify({
+      publicKey,
+      signingPublicKey,
+    }),
   });
 
   const data = await response.json();

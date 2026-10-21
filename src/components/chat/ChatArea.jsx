@@ -1,3 +1,5 @@
+import { getChannel } from "../../api/channels";
+import { Hash, LockKeyhole, Users, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   getMessages,
@@ -12,23 +14,108 @@ import MessageInput from "./MessageInput";
 import {
   encryptMessageForRecipient,
   decryptMessageForMe,
+  signMessage,
+  verifyMessageSignature,
 } from "../../crypto";
 
-function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
+function ChatArea({ activeChannel, channelName, activeDM, encryptionKeyPair }) {
     const [messages, setMessages] = useState({});
+    const [loadingMessages, setLoadingMessages] = useState(false);
 
     const token = localStorage.getItem("token");
 
     const decryptDirectMessage = async (message) => {
-        // Leave ordinary, unencrypted messages unchanged.
+    if (!message.encryption?.algorithm) return message;
+
+    if (!encryptionKeyPair?.privateKey || !encryptionKeyPair?.publicKey) {
+        return {
+        ...message,
+        content: "[Unlock your vault to read this message]",
+        };
+    }
+
+    const currentUserId = localStorage.getItem("userId");
+    const senderId =
+        typeof message.sender === "object"
+        ? message.sender?._id
+        : message.sender;
+
+    const isSender = String(senderId) === String(currentUserId);
+
+    const encryptedContent = isSender
+        ? message.encryption.senderContent
+        : message.encryption.recipientContent;
+
+    const ciphertext = encryptedContent || message.content;
+
+    try {
+        const plaintext = await decryptMessageForMe(
+        ciphertext,
+        encryptionKeyPair
+        );
+
+        // Legacy messages may not contain signatures.
+        if (!message.signature) {
+        return {
+            ...message,
+            content: plaintext,
+            signatureVerified: false,
+            signatureStatus: "unsigned",
+        };
+        }
+
+        // A sender cannot be verified if their identity or key is unavailable.
+        if (!senderId) {
+        return {
+            ...message,
+            content: plaintext,
+            signatureVerified: false,
+            signatureStatus: "unverifiable",
+        };
+        }
+
+        const senderKey = await getUserPublicKey(senderId, token);
+        const valid = await verifyMessageSignature(
+        plaintext,
+        message.signature,
+        senderKey.signingPublicKey
+        );
+
+        console.log(
+            "Message signature verification:",
+            valid ? "VERIFIED" : "INVALID"
+        );
+
+        return {
+        ...message,
+        content: plaintext,
+        signatureVerified: valid,
+        signatureStatus: valid ? "verified" : "invalid",
+        };
+    } catch (error) {
+        console.error("DM decryption or signature verification failed:", error);
+
+        return {
+        ...message,
+        content: "[Unable to decrypt or verify this message]",
+        signatureVerified: false,
+        signatureStatus: "unverifiable",
+        };
+    }
+    };
+
+    const decryptChannelMessage = async (message) => {
         if (!message.encryption?.algorithm) {
             return message;
         }
 
-        if (!encryptionKeyPair?.privateKey || !encryptionKeyPair?.publicKey) {
+        if (
+            !encryptionKeyPair?.privateKey ||
+            !encryptionKeyPair?.publicKey
+        ) {
             return {
-            ...message,
-            content: "[Unlock your vault to read this message]",
+                ...message,
+                content: "[Unlock your vault to read this message]",
             };
         }
 
@@ -36,35 +123,61 @@ function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
 
         const senderId =
             typeof message.sender === "object"
-            ? message.sender?._id
-            : message.sender;
+                ? message.sender?._id
+                : message.sender;
 
-        const isSender = String(senderId) === String(currentUserId);
+        const recipientCopy = message.encryption.recipientContents?.find(
+            (item) => String(item.userId) === String(currentUserId)
+        );
 
-        // Select the ciphertext encrypted for the current user.
-        const encryptedContent = isSender
-            ? message.encryption.senderContent
-            : message.encryption.recipientContent;
-
-        // Older messages may not have the new fields.
-        const ciphertext = encryptedContent || message.content;
+        if (!recipientCopy?.content) {
+            return {
+                ...message,
+                content: "[No encrypted copy available for this account]",
+                signatureStatus: "unavailable",
+            };
+        }
 
         try {
             const plaintext = await decryptMessageForMe(
-            ciphertext,
-            encryptionKeyPair
+                recipientCopy.content,
+                encryptionKeyPair
+            );
+
+            if (!message.signature || !senderId) {
+                return {
+                    ...message,
+                    content: plaintext,
+                    signatureVerified: false,
+                    signatureStatus: "unverifiable",
+                };
+            }
+
+            const senderKey = await getUserPublicKey(senderId, token);
+
+            const valid = await verifyMessageSignature(
+                plaintext,
+                message.signature,
+                senderKey.signingPublicKey
             );
 
             return {
-            ...message,
-            content: plaintext,
+                ...message,
+                content: plaintext,
+                signatureVerified: valid,
+                signatureStatus: valid ? "verified" : "invalid",
             };
         } catch (error) {
-            console.error("Failed to decrypt direct message:", error);
+            console.error(
+                "Channel decryption or signature verification failed:",
+                error
+            );
 
             return {
-            ...message,
-            content: "[Unable to decrypt this message]",
+                ...message,
+                content: "[Unable to decrypt or verify this message]",
+                signatureVerified: false,
+                signatureStatus: "unverifiable",
             };
         }
     };
@@ -82,14 +195,20 @@ function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
     }, [token]);
 
     useEffect(() => {
-        const handleNewMessage = (message) => {
-            setMessages((currentMessages) => ({
-                ...currentMessages,
-                [message.channel]: [
-                    ...currentMessages[message.channel],
-                    message,
-                ],
-            }));
+        const handleNewMessage = async (message) => {
+            try {
+                const decryptedMessage = await decryptChannelMessage(message);
+
+                setMessages((currentMessages) => ({
+                    ...currentMessages,
+                    [message.channel]: [
+                        ...(currentMessages[message.channel] || []),
+                        decryptedMessage,
+                    ],
+                }));
+            } catch (error) {
+                console.error("Failed to process new channel message:", error);
+            }
         };
 
         socket.on("newMessage", handleNewMessage);
@@ -97,18 +216,13 @@ function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
         return () => {
             socket.off("newMessage", handleNewMessage);
         };
-    }, []);
+    }, [encryptionKeyPair, token]);
 
     useEffect(() => { 
         
         const handleNewDirectMessage = async (message) => {
             try {
                 await updateMessageStatus(message._id, "delivered", token);
-
-                socket.emit("messageStatusUpdate", {
-                messageId: message._id,
-                status: "delivered",
-                });
             } catch (error) {
                 console.error("Failed to mark message as delivered:", error);
             }
@@ -176,50 +290,20 @@ function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
     }, [activeChannel, token]);
 
     useEffect(() => {
+        if (!activeChannel && !activeDM) return;
+        let cancelled = false;
+
         const loadMessages = async () => {
             if (!token) return;
+            setLoadingMessages(true);
 
             try {
                 if (activeDM) {
                     const user = await getUserByUsername(activeDM, token);
-                        console.log("DM history target:", {
-                        activeDM,
-                        userId: user?._id,
-                    });
 
                     const dmMessages = await getDirectMessages(user._id, token);
+                    if (cancelled) return;
 
-                    console.log(
-                        "Newest DM:",
-                        dmMessages.length
-                            ? {
-                                id: dmMessages[dmMessages.length - 1]._id,
-                                encryption: dmMessages[dmMessages.length - 1].encryption,
-                                contentLength: dmMessages[dmMessages.length - 1].content?.length,
-                            }
-                            : "No messages"
-                    );
-
-                    console.log(
-                        "History message ID:",
-                        dmMessages[dmMessages.length - 1]?._id
-                    );
-
-                    console.log("DM history received:", dmMessages);
-                    console.log("DM history raw data:", JSON.stringify(dmMessages, null, 2));
-                    console.log("Receiver key available:", !!encryptionKeyPair?.privateKey);
-                    console.log("DM encryption metadata:", dmMessages[0]?.encryption);
-                    console.log("DM content length:", dmMessages[0]?.content?.length);
-                    console.log(
-                        "History ciphertext check:",
-                        dmMessages.slice(-3).map((message) => ({
-                            id: message._id,
-                            algorithm: message.encryption?.algorithm,
-                            contentType: typeof message.content,
-                            contentLength: message.content?.length,
-                            hasEncryptionMetadata: !!message.encryption?.algorithm,
-                        }))
-                    );
                     const decryptedMessages = await Promise.all(
                         dmMessages.map((message) => decryptDirectMessage(message))
                     );
@@ -265,27 +349,41 @@ function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
 
                     return;
                 }
-
                 if (activeChannel) {
                     const channelMessages = await getMessages(
                         activeChannel,
                         token
                     );
 
+                    if (cancelled) return;
+
+                    const decryptedChannelMessages = await Promise.all(
+                        channelMessages.map((message) =>
+                            decryptChannelMessage(message)
+                        )
+                    );
+
+                    if (cancelled) return;
+
                     setMessages((currentMessages) => ({
                         ...currentMessages,
-                        [activeChannel]: channelMessages,
+                        [activeChannel]: decryptedChannelMessages,
                     }));
                 }
             } catch (error) {
-                console.error(
-                    "Failed to load messages:",
-                    error
-                );
+                console.error("Failed to load messages:", error);
+            } finally {
+                if (!cancelled) {
+                    setLoadingMessages(false);
+                }
             }
         };
 
         loadMessages();
+
+        return () => {
+            cancelled = true;
+        };
     }, [activeChannel, activeDM, token, encryptionKeyPair]);
 
     const handleSend = async (text) => {
@@ -298,70 +396,164 @@ function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
 
         try {
             if (activeDM) {
-            if (!encryptionKeyPair?.privateKey) {
-                throw new Error("Unlock your encryption vault first.");
-            }
+                if (
+                    !encryptionKeyPair?.privateKey ||
+                    !encryptionKeyPair?.signingPrivateKey
+                    ) {
+                    throw new Error(
+                        "Unlock your encryption and signing keys first."
+                    );
+                }
 
-            const recipient = await getUserByUsername(activeDM, token);
-          
-            const recipientKey = await getUserPublicKey(
-                recipient._id,
-                token
-            );
+                const recipient = await getUserByUsername(activeDM, token);
+                const recipientKey = await getUserPublicKey(
+                    recipient._id,
+                    token
+                );
 
-            const senderKey = await getUserPublicKey(
-                localStorage.getItem("userId"),
-                token
-            );
+                const senderKey = await getUserPublicKey(
+                    localStorage.getItem("userId"),
+                    token
+                );
 
-            const encryptedForRecipient = await encryptMessageForRecipient(
-                text,
-                recipientKey.publicKey
-            );
+                const encryptedForRecipient = await encryptMessageForRecipient(
+                    text,
+                    recipientKey.publicKey
+                );
 
-            const encryptedForSender = await encryptMessageForRecipient(
-                text,
-                senderKey.publicKey
-            );
+                const encryptedForSender = await encryptMessageForRecipient(
+                    text,
+                    senderKey.publicKey
+                );
 
-            const encryption = {
-                ...encryptedForRecipient.encryption,
-                senderContent: encryptedForSender.content,
-                recipientContent: encryptedForRecipient.content,
-            };
+                const encryption = {
+                    ...encryptedForRecipient.encryption,
+                    senderContent: encryptedForSender.content,
+                    recipientContent: encryptedForRecipient.content,
+                };
 
-            const savedMessage = await sendMessage(
-                null,
-                encryptedForRecipient.content,
-                token,
-                recipient._id,
-                encryption
-            );
+                const signature = await signMessage(
+                    text,
+                    encryptionKeyPair.signingPrivateKey
+                );
 
-            setMessages((currentMessages) => ({
-                ...currentMessages,
-                dm: [
-                    ...(currentMessages.dm || []),
-                    {
-                    ...savedMessage,
-                    content: text,
-                    },
-                ],
-            }));
-
-            socket.emit("sendDirectMessage", savedMessage);
-
-            return;
-            }
-
-            if (activeChannel) {
-                const savedMessage = await sendMessage(activeChannel, text, token);
+                const savedMessage = await sendMessage(
+                    null,
+                    encryptedForRecipient.content,
+                    token,
+                    recipient._id,
+                    encryption,
+                    signature,
+                    1
+                );
 
                 setMessages((currentMessages) => ({
-                    ...currentMessages, 
+                    ...currentMessages,
+                    dm: [
+                        ...(currentMessages.dm || []),
+                        {
+                        ...savedMessage,
+                        content: text,
+                        },
+                    ],
+                }));
+
+                socket.emit("sendDirectMessage", savedMessage);
+
+                return;
+            }
+            if (activeChannel) {
+                if (
+                    !encryptionKeyPair?.privateKey ||
+                    !encryptionKeyPair?.signingPrivateKey
+                ) {
+                    throw new Error(
+                        "Unlock your encryption and signing keys first."
+                    );
+                }
+
+                // Get the channel and its current members.
+                const channel = await getChannel(activeChannel, token);
+
+                if (!Array.isArray(channel.members) || channel.members.length === 0) {
+                    throw new Error("This channel has no members.");
+                }
+
+                // Encrypt a separate copy for every member, including yourself.
+                const recipientContents = await Promise.all(
+                    channel.members.map(async (member) => {
+                        const userId =
+                            typeof member === "object" ? member._id : member;
+
+                        if (!userId) {
+                            throw new Error(
+                                "Could not identify a channel member."
+                            );
+                        }
+
+                        const userKey = await getUserPublicKey(userId, token);
+
+                        if (!userKey.publicKey) {
+                            throw new Error(
+                                `A public encryption key is missing for a channel member.`
+                            );
+                        }
+
+                        const encrypted = await encryptMessageForRecipient(
+                            text,
+                            userKey.publicKey
+                        );
+
+                        return {
+                            userId: String(userId),
+                            content: encrypted.content,
+                        };
+                    })
+                );
+
+                // Sign the original plaintext.
+                const signature = await signMessage(
+                    text,
+                    encryptionKeyPair.signingPrivateKey
+                );
+
+                // Use the sender's encrypted copy for the main content field.
+                const senderCopy = recipientContents.find(
+                    (item) => item.userId === String(localStorage.getItem("userId"))
+                );
+
+                if (!senderCopy) {
+                    throw new Error(
+                        "Could not find your encrypted copy of the message."
+                    );
+                }
+
+                const encryption = {
+                    algorithm: "crypto_box_seal",
+                    nonce: null,
+                    version: 1,
+                    recipientContents,
+                };
+
+                const savedMessage = await sendMessage(
+                    activeChannel,
+                    senderCopy.content,
+                    token,
+                    null,
+                    encryption,
+                    signature,
+                    1
+                );
+
+                // Show the original plaintext locally after successful submission.
+                setMessages((currentMessages) => ({
+                    ...currentMessages,
                     [activeChannel]: [
                         ...(currentMessages[activeChannel] || []),
-                        savedMessage,
+                        {
+                            ...savedMessage,
+                            content: text,
+                        },
                     ],
                 }));
 
@@ -375,18 +567,72 @@ function ChatArea({ activeChannel, activeDM, encryptionKeyPair }) {
         }
     };
 
-    console.log("Messages currently rendered:", activeDM ? messages.dm : messages[activeChannel]);
-    return (
-        <section className="chat-area">
-            <MessageList messages={
-                activeDM ? messages.dm : messages[activeChannel]
-            } />
-            <MessageInput
-                onSend={handleSend}
-                activeChannel={activeChannel}
+  return (
+    <section className="chat-area nexus-chat-area">
+      <header className="chat-channel-header">
+        <div className="chat-channel-heading">
+          <div className="chat-channel-icon">
+            {activeDM ? (
+              <LockKeyhole size={19} />
+            ) : (
+              <Hash size={20} />
+            )}
+          </div>
+
+          <div className="chat-channel-title">
+            <h2>{activeDM || (channelName ? `#${channelName}` : "Messages")}</h2>
+            <p>
+              {activeDM
+                ? "PRIVATE CONVERSATION"
+                : "NEXUS WORKSPACE · CHANNEL"}
+            </p>
+          </div>
+        </div>
+
+        <div className="chat-header-status">
+          <span className="chat-status-dot" />
+          <span>{activeDM ? "DIRECT MESSAGE" : "CHANNEL ACTIVE"}</span>
+          <span className="chat-header-divider" />
+          <ShieldCheck size={16} />
+          <span>{activeDM ? "E2E ENCRYPTION" : "WORKSPACE"}</span>
+        </div>
+      </header>
+
+      <div className="chat-message-region">
+        {loadingMessages ? (
+            <div className="chat-loading">
+            <span className="chat-loading-spinner" />
+            <p>Loading messages...</p>
+            </div>
+        ) : (
+            <MessageList
+            messages={activeDM ? messages.dm : messages[activeChannel]}
             />
-        </section>
-    );
+        )}
+      </div>
+
+      <div className="chat-composer-region">
+        <MessageInput
+            onSend={handleSend}
+            activeChannel={activeChannel}
+            channelName={channelName}
+            activeDM={activeDM}
+        />
+
+        <div className="chat-security-footer">
+          <span>
+            <LockKeyhole size={12} />
+            {activeDM ? "DIRECT MESSAGE" : "NEXUS WORKSPACE"}
+          </span>
+          <span className="security-footer-separator">|</span>
+          <span className="security-footer-encryption">
+            <ShieldCheck size={13} />
+            {activeDM ? "E2E ENCRYPTION" : "SECURE SESSION"}
+          </span>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default ChatArea;

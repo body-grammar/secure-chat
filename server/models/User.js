@@ -36,6 +36,10 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
+    signingPublicKey: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

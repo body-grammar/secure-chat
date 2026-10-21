@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:5001/api";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
 export const getMessages = async (channel, token) => {
   const response = await fetch(
@@ -19,13 +19,14 @@ export const getMessages = async (channel, token) => {
   return data.messages;
 };
 
-
 export const sendMessage = async (
   channel,
   content,
   token,
   recipient = null,
-  encryption = null
+  encryption = null,
+  signature = null,
+  signingKeyVersion = 1
 ) => {
   const response = await fetch(`${API_URL}/messages`, {
     method: "POST",
@@ -38,6 +39,8 @@ export const sendMessage = async (
       recipient,
       content,
       encryption,
+      signature,
+      signingKeyVersion,
     }),
   });
 
@@ -50,7 +53,6 @@ export const sendMessage = async (
 
   return data.message;
 };
-
 
 export const getDirectMessages = async (userId, token) => {
   const response = await fetch(
@@ -77,7 +79,7 @@ export const getDirectMessages = async (userId, token) => {
 
 export const updateMessageStatus = async (messageId, status, token) => {
   const response = await fetch(
-    `http://localhost:5001/api/messages/${messageId}/status`,
+    `${API_URL}/messages/${messageId}/status`,
     {
       method: "PATCH",
       headers: {

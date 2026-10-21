@@ -1,20 +1,63 @@
-
-import { useState } from "react";
+import SettingsPage from "../components/layout/SettingsPage";
+import FilesPage from "../components/layout/FilesPage";
+import Home from "../components/layout/Home";
+import { useEffect, useState } from "react";
 import Sidebar from "../components/layout/Sidebar";
-import TopBar from "../components/layout/TopBar";
 import ChatArea from "../components/chat/ChatArea";
 import { ShieldCheck, Laptop, Activity } from "lucide-react";
 
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+
 function AppLayout({ currentUser, onLogout, encryptionKeyPair }) {
-    const [activeChannel, setActiveChannel] = useState("general");
+    const [activeChannel, setActiveChannel] = useState(null);
     const [activeDM, setActiveDM] = useState(null);
+    const [activePage, setActivePage] = useState("messages");
+    const [channels, setChannels] = useState([]);
+    const fetchChannels = async () => {
+        try {
+            const token = localStorage.getItem("token");
+            if (!token) return;
+
+            const response = await fetch(
+            `${API_URL}/channels/discover`,
+            {
+                headers: {
+                Authorization: `Bearer ${token}`,
+                },
+            }
+            );
+
+            if (!response.ok) {
+            throw new Error("Failed to fetch channels");
+            }
+
+            const data = await response.json();
+            setChannels(data.channels || []);
+            return data.channels || [];
+        } catch (error) {
+            console.error("Fetch channels error:", error);
+        }
+        };
+
+        useEffect(() => {
+        fetchChannels();
+    }, []);
 
     return (
         <div className="app-layout">
             <Sidebar
+                channels={channels}
+                onChannelsRefresh={fetchChannels}
                 activeChannel={activeChannel}
+                activePage={activePage}
+                onPageChange={(page) => {
+                    setActivePage(page);
+                    setActiveChannel(null);
+                    setActiveDM(null);
+                }}
                 onChannelChange={(channel) => {
-                    setActiveChannel(channel);
+                    setActiveChannel(channel._id);
                     setActiveDM(null);
                 }}
                 currentUser={currentUser}
@@ -27,17 +70,20 @@ function AppLayout({ currentUser, onLogout, encryptionKeyPair }) {
             />
 
             <div className="app-workspace">
-                <div className="workspace-top">
-                    <TopBar
-                        activeChannel={activeChannel}
-                        currentUser={currentUser}
-                    />
-                </div>
-
+            {activePage === "home" ? (
+            <Home currentUser={currentUser} />
+            ) : activePage === "files" ? (
+            <FilesPage />
+            ) : activePage === "settings" ? (
+            <SettingsPage currentUser={currentUser} />
+            ) : (
                 <div className="workspace-main">
                     <main className="chat-column">
                         <ChatArea
                             activeChannel={activeChannel}
+                            channelName={
+                                channels.find((channel) => channel._id === activeChannel)?.name || ""
+                            }
                             activeDM={activeDM}
                             encryptionKeyPair={encryptionKeyPair}
                         />
@@ -87,6 +133,7 @@ function AppLayout({ currentUser, onLogout, encryptionKeyPair }) {
                         </section>
                     </aside>
                 </div>
+            )}
 
                 <section className="security-dashboard">
                     <div className="terminal-panel">

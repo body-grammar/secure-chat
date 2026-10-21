@@ -1,7 +1,7 @@
-
 import { useState } from "react";
+import { ArrowUp, Terminal } from "lucide-react";
 
-function MessageInput({ onSend, activeChannel, activeDM }) {
+function MessageInput({ onSend, activeChannel, channelName, activeDM }) {
   const [text, setText] = useState("");
 
   const handleSend = () => {
@@ -13,22 +13,40 @@ function MessageInput({ onSend, activeChannel, activeDM }) {
   };
 
   return (
-    <div className="message-input">
+    <div className="message-input nexus-message-input">
+      <div className="composer-prompt" aria-hidden="true">
+        <Terminal size={17} />
+        <span>&gt;</span>
+      </div>
+
       <input
         type="text"
+        aria-label="Write a message"
         placeholder={
           activeDM
             ? `Message @${activeDM.username || activeDM}`
-            : `Message #${activeChannel || "general"}`
+            : `Message #${channelName || "general"}`
         }
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") handleSend();
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            handleSend();
+          }
         }}
       />
-      <button type="button" onClick={handleSend}>
-        Send
+
+      <span className="composer-key-hint">ENTER ↵</span>
+
+      <button
+        type="button"
+        onClick={handleSend}
+        disabled={!text.trim()}
+        aria-label="Send message"
+        title="Send message"
+      >
+        <ArrowUp size={19} />
       </button>
     </div>
   );

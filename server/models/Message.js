@@ -45,6 +45,28 @@ const messageSchema = new mongoose.Schema(
         type: String,
         default: null,
       },
+      recipientContents: [
+        {
+          userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          content: {
+            type: String,
+            required: true,
+          },
+        },
+      ],
+    },
+
+    signature: {
+      type: String,
+      default: null,
+    },
+    signingKeyVersion: {
+      type: Number,
+      default: 1,
     },
 
     status: {
