@@ -8,7 +8,7 @@ import {
   updateMessageStatus,
 } from "../../api/messages";
 import socket from "../../api/socket";
-import { getUserByUsername, getUserPublicKey } from "../../api/user";
+import { getUserByUsername, getUserPublicKey, getUserById } from "../../api/user";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import {
@@ -199,12 +199,49 @@ function ChatArea({ activeChannel, channelName, activeDM, encryptionKeyPair }) {
             try {
                 const decryptedMessage = await decryptChannelMessage(message);
 
+                console.log("CHANNEL MESSAGE DEBUG", {
+                    originalSender: message.sender,
+                    decryptedSender: decryptedMessage.sender,
+                    tokenExists: Boolean(token),
+                });
+
+                // Check both the decrypted message and the original socket message.
+                let sender =
+                decryptedMessage.sender ?? message.sender;
+
+                const senderId =
+                typeof sender === "object" && sender !== null
+                    ? sender._id || sender.id
+                    : sender;
+
+                // Resolve the sender's username if it isn't already available.
+                if (
+                senderId &&
+                (typeof sender !== "object" ||
+                    sender === null ||
+                    !sender.username)
+                ) {
+                try {
+                    sender = await getUserById(senderId, token);
+                } catch (error) {
+                    console.error("Failed to resolve message sender:", error);
+                }
+                }
+
+                const resolvedMessage = {
+                ...decryptedMessage,
+                sender:
+                    typeof sender === "object" && sender !== null
+                    ? sender
+                    : decryptedMessage.sender ?? message.sender,
+                };
+
                 setMessages((currentMessages) => ({
-                    ...currentMessages,
-                    [message.channel]: [
-                        ...(currentMessages[message.channel] || []),
-                        decryptedMessage,
-                    ],
+                ...currentMessages,
+                [message.channel]: [
+                    ...(currentMessages[message.channel] || []),
+                    resolvedMessage,
+                ],
                 }));
             } catch (error) {
                 console.error("Failed to process new channel message:", error);
@@ -546,13 +583,20 @@ function ChatArea({ activeChannel, channelName, activeDM, encryptionKeyPair }) {
                 );
 
                 // Show the original plaintext locally after successful submission.
-                setMessages((currentMessages) => ({
+                // Resolve the sender before displaying the message locally.
+                const currentUser = await getUserById(
+                    localStorage.getItem("userId"),
+                    token
+                    );
+
+                    setMessages((currentMessages) => ({
                     ...currentMessages,
                     [activeChannel]: [
                         ...(currentMessages[activeChannel] || []),
                         {
-                            ...savedMessage,
-                            content: text,
+                        ...savedMessage,
+                        sender: currentUser,
+                        content: text,
                         },
                     ],
                 }));

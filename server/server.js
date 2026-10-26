@@ -113,7 +113,11 @@ io.on("connection", (socket) => {
         return;
       }
 
-      socket.to(roomName).emit("newMessage", savedMessage);
+      const populatedMessage = await Message.findById(savedMessage._id)
+        .populate("sender", "_id username")
+        .lean();
+
+      socket.to(roomName).emit("newMessage", populatedMessage);
     } catch (error) {
       console.error("Channel message broadcast failed:", error);
     }
@@ -199,7 +203,10 @@ io.on("connection", (socket) => {
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: [
+      "https://nexus-secure-chat-seven.vercel.app",
+      "http://localhost:5173",
+    ],
   })
 );
 

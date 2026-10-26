@@ -630,3 +630,64 @@ export async function restoreTrustedKeyPair(userId, trustedVault) {
     sodium.memzero(signingPrivateBytes);
   }
 }
+
+export async function inspectVaultWithPassphrase(passphrase, userId) {
+  await sodium.ready;
+
+  const stored = localStorage.getItem(getVaultStorageKey(userId));
+  if (!stored) throw new Error("No account vault found.");
+
+  const vault = JSON.parse(stored);
+  if (vault.userId !== userId || vault.version !== 2) {
+    throw new Error("This is not the expected version-2 account vault.");
+  }
+
+  const salt = sodium.from_base64(vault.salt);
+  const nonce = sodium.from_base64(vault.nonce);
+  const ciphertext = sodium.from_base64(vault.ciphertext);
+  const key = sodium.crypto_pwhash(
+    sodium.crypto_secretbox_KEYBYTES,
+    passphrase,
+    salt,
+    sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_ALG_ARGON2ID13
+  );
+
+  try {
+    const decrypted = sodium.crypto_secretbox_open_easy(
+      ciphertext, nonce, key
+    );
+
+    try {
+      const keys = JSON.parse(sodium.to_string(decrypted));
+      const encryptionPrivate = sodium.from_base64(keys.privateKey);
+      const signingPrivate = sodium.from_base64(keys.signingPrivateKey);
+
+      try {
+        return {
+          encryptionKeyMatchesVault:
+            sodium.to_base64(
+              sodium.crypto_scalarmult_base(encryptionPrivate)
+            ) === vault.publicKey,
+          signingKeyMatchesVault:
+            sodium.to_base64(
+              sodium.crypto_sign_ed25519_sk_to_pk(signingPrivate)
+            ) === vault.signingPublicKey,
+          vaultPublicKey: vault.publicKey,
+          vaultSigningPublicKey: vault.signingPublicKey,
+        };
+      } finally {
+        sodium.memzero(encryptionPrivate);
+        sodium.memzero(signingPrivate);
+      }
+    } finally {
+      sodium.memzero(decrypted);
+    }
+  } finally {
+    sodium.memzero(key);
+    sodium.memzero(salt);
+    sodium.memzero(nonce);
+    sodium.memzero(ciphertext);
+  }
+}

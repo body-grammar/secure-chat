@@ -2092,3 +2092,219 @@ body {
     font-size: 28px;
   }
 }
+
+.sidebar-channel-join {
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 6px 11px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #67e8f9;
+  background: rgba(34, 211, 238, 0.07);
+  border: 1px solid rgba(103, 232, 249, 0.22);
+  border-radius: 7px;
+
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.sidebar-channel-join:hover:not(:disabled) {
+  color: #061116;
+  background: #67e8f9;
+  border-color: #67e8f9;
+  transform: translateY(-1px);
+}
+
+.sidebar-channel-join:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.sidebar-channel-join:disabled {
+  color: #64748b;
+  background: rgba(148, 163, 184, 0.05);
+  border-color: rgba(148, 163, 184, 0.1);
+  cursor: wait;
+  opacity: 0.7;
+}
+
+/* Sidebar collapse toggle */
+.sidebar-collapse-toggle {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #94a3b8;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.sidebar-collapse-toggle:hover {
+  color: #67e8f9;
+  background: rgba(34, 211, 238, 0.08);
+  border-color: rgba(103, 232, 249, 0.18);
+}
+
+/* Smooth width transition */
+.nexus-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  transition: width 0.25s ease;
+}
+
+.nexus-sidebar.sidebar-collapsed {
+  width: 72px;
+  padding-left: 10px;
+  padding-right: 10px;
+  overflow-x: hidden;
+}
+
+/* Hide text and section headings */
+.sidebar-collapsed .sidebar-brand-copy,
+.sidebar-collapsed .sidebar-section-title,
+.sidebar-collapsed .sidebar-item span:not(.sidebar-active-dot):not(.sidebar-avatar):not(.sidebar-presence-dot),
+.sidebar-collapsed .sidebar-channel-join,
+.sidebar-collapsed .sidebar-error,
+.sidebar-collapsed .sidebar-empty,
+.sidebar-collapsed .sidebar-live-indicator,
+.sidebar-collapsed .sidebar-terminal-card,
+.sidebar-collapsed .profile-user-details,
+.sidebar-collapsed .profile-menu-button {
+  display: none;
+}
+
+/* Center icons in collapsed navigation */
+.sidebar-collapsed .nexus-sidebar-brand {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.sidebar-collapsed .sidebar-collapse-toggle {
+  margin: 8px auto 0;
+}
+
+.sidebar-collapsed .sidebar-section-heading {
+  justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-item {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-collapsed .sidebar-channel-row {
+  justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-channel-row > .sidebar-nav-button {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-collapsed .sidebar-avatar {
+  flex-shrink: 0;
+}
+
+.sidebar-collapsed .user-profile {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.sidebar-collapsed .profile-avatar {
+  margin: 0 auto;
+}
+
+/* Keep collapsed sidebar usable on smaller screens */
+@media (max-width: 600px) {
+  .nexus-sidebar.sidebar-collapsed {
+    width: 64px;
+  }
+}
+
+/* Fully collapsed NEXUS sidebar */
+.nexus-sidebar.sidebar-collapsed {
+  width: 72px;
+  min-width: 72px;
+  flex: 0 0 72px;
+  overflow: hidden;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Hide text and expanded-only content */
+.sidebar-collapsed .sidebar-brand-copy,
+.sidebar-collapsed .sidebar-section-title,
+.sidebar-collapsed .sidebar-channel-join,
+.sidebar-collapsed .sidebar-error,
+.sidebar-collapsed .sidebar-empty,
+.sidebar-collapsed .sidebar-live-indicator,
+.sidebar-collapsed .sidebar-terminal-card,
+.sidebar-collapsed .profile-user-details,
+.sidebar-collapsed .profile-menu-button {
+  display: none !important;
+}
+
+/* Center the brand and collapse control */
+.sidebar-collapsed .nexus-sidebar-brand {
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-collapsed .sidebar-collapse-toggle {
+  margin: 0 auto;
+}
+
+/* Center navigation icons */
+.sidebar-collapsed .sidebar-item {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-collapsed .sidebar-channel-row {
+  justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-channel-row > .sidebar-nav-button {
+  justify-content: center;
+  min-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-collapsed .sidebar-section-heading {
+  justify-content: center;
+}
+
+.sidebar-collapsed .user-profile {
+  justify-content: center;
+}
+
+.sidebar-collapsed .profile-avatar {
+  margin: 0 auto;
+}

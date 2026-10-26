@@ -204,6 +204,21 @@ router.get("/username/:username", authMiddleware, async (req, res) => {
     }
 });
 
+router.get("/:userId", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select("_id username");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ user });
+  } catch (error) {
+    console.error("User lookup by ID error:", error);
+    res.status(500).json({ message: "Failed to find user" });
+  }
+});
+
 router.put("/public-key", authMiddleware, async (req, res) => {
   try {
     const { publicKey, signingPublicKey } = req.body;

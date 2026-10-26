@@ -15,6 +15,7 @@ import {
 import { useEffect, useState } from "react";
 import { getAllUsers } from "../../api/user";
 import NexusLogo from "../NexusLogo";
+import { PanelLeftClose } from "lucide-react";
 
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5001/api";
@@ -35,6 +36,7 @@ function Sidebar({
   const [directMessages, setDirectMessages] = useState([]);
   const [usersError, setUsersError] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [joiningChannelId, setJoiningChannelId] = useState(null);
   const [channelError, setChannelError] = useState("");
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -161,13 +163,26 @@ function Sidebar({
   }, [currentUser?._id]);
 
   return (
-    <aside className="sidebar nexus-sidebar">
+    <aside
+      className={`sidebar nexus-sidebar ${collapsed ? "sidebar-collapsed" : ""}`}
+    >
       <div className="nexus-sidebar-brand">
         <NexusLogo compact />
+
         <div className="sidebar-brand-copy">
           <span>NEXUS</span>
           <small>SECURE CHAT</small>
         </div>
+
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          onClick={() => setCollapsed((previous) => !previous)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <PanelLeftClose size={17} />
+        </button>
       </div>
 
       <div className="sidebar-section">

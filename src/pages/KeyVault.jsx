@@ -19,6 +19,7 @@ import {
   forgetTrustedDevice,
   validateTrustedVault,
 } from "../trustedDevice";
+import "./KeyVault.css";
 
 export default function KeyVault({ currentUser, onUnlocked }) {
   const [mode, setMode] = useState("unlock");

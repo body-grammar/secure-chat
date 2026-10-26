@@ -38,7 +38,12 @@ function MessageList({ messages = [] }) {
           message.user === "user@arch";
 
         const senderName =
-          message.sender?.username || message.user || "Unknown user";
+          message.sender?.username ||
+          message.user ||
+          (String(senderId || "") === String(currentUserId || "")
+            ? localStorage.getItem("username")
+            : null) ||
+          "Unknown user";
 
         const timestamp = message.createdAt
           ? new Date(message.createdAt).toLocaleTimeString([], {
