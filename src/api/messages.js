@@ -77,6 +77,24 @@ export const getDirectMessages = async (userId, token) => {
   return data.messages;
 };
 
+export const getDMConversations = async (token) => {
+  const response = await fetch(`${API_URL}/messages/dm/conversations`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(
+      errorData.message || "Failed to fetch DM conversations"
+    );
+  }
+
+  const data = await response.json();
+  return data.conversations;
+};
+
 export const updateMessageStatus = async (messageId, status, token) => {
   const response = await fetch(
     `${API_URL}/messages/${messageId}/status`,

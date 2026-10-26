@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { getAllUsers } from "../../api/user";
 import NexusLogo from "../NexusLogo";
 import { PanelLeftClose } from "lucide-react";
+import { getDMConversations } from "../../api/messages";
 
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5001/api";
@@ -35,6 +36,8 @@ function Sidebar({
 
   const [directMessages, setDirectMessages] = useState([]);
   const [usersError, setUsersError] = useState("");
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [joiningChannelId, setJoiningChannelId] = useState(null);
@@ -133,6 +136,33 @@ function Sidebar({
     }
   };
 
+    const handleOpenNewMessage = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    setUsersError("");
+
+    try {
+      const users = await getAllUsers(token);
+      const existingIds = new Set(
+        directMessages.map((user) => user._id)
+      );
+
+      setAvailableUsers(
+        users.filter(
+          (user) =>
+            user._id !== currentUser?._id &&
+            !existingIds.has(user._id)
+        )
+      );
+
+      setNewMessageOpen(true);
+    } catch (error) {
+      console.error("Failed to load available users:", error);
+      setUsersError("Could not load available users");
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -141,26 +171,29 @@ function Sidebar({
         const token = localStorage.getItem("token");
         if (!token) return;
 
-        const users = await getAllUsers(token);
+        const conversations = await getDMConversations(token);
 
         if (!cancelled) {
-          setDirectMessages(
-            users.filter((user) => user._id !== currentUser?._id)
-          );
+          setDirectMessages(conversations);
           setUsersError("");
         }
       } catch (error) {
-        console.error("Failed to load users:", error);
-        if (!cancelled) setUsersError("Could not load users");
+        console.error("Failed to load DM conversations:", error);
+
+        if (!cancelled) {
+          setUsersError("Could not load conversations");
+        }
       }
     };
 
     loadUsers();
 
+    window.addEventListener("nexus:dm-updated", loadUsers);
+
     return () => {
       cancelled = true;
     };
-  }, [currentUser?._id]);
+  }, [currentUser?._id, activeDM]);
 
   return (
     <aside
@@ -302,7 +335,15 @@ function Sidebar({
       <div className="sidebar-section">
         <div className="sidebar-section-heading">
           <h3 className="sidebar-section-title">DIRECT MESSAGES</h3>
-          <span className="sidebar-live-indicator" title="Direct messages" />
+          <button
+            type="button"
+            className="sidebar-icon-button"
+            aria-label="New message"
+            title="Start a new direct message"
+            onClick={handleOpenNewMessage}
+          >
+            <Plus size={17} />
+          </button>
         </div>
 
         {usersError && (
@@ -405,6 +446,94 @@ function Sidebar({
               <LogOut size={15} />
               Sign out
             </button>
+          </div>
+        )}
+
+        {newMessageOpen && (
+          <div className="channel-modal-overlay">
+            <div
+              className="channel-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="new-message-title"
+            >
+              <div className="channel-modal-header">
+                <h2 id="new-message-title">New Message</h2>
+                <button
+                  type="button"
+                  onClick={() => setNewMessageOpen(false)}
+                  aria-label="Close dialog"
+                >
+                  ×
+                </button>
+              </div>
+
+              <p>Select a user to start a direct conversation.</p>
+
+              <div className="new-message-user-list">
+                {availableUsers.map((user) => (
+                  <div className="sidebar-channel-row" key={user._id}>
+                    <span className="sidebar-avatar">
+                      {user.username?.charAt(0).toUpperCase() || "?"}
+                    </span>
+
+                    <span className="sidebar-user-name">
+                      {user.username}
+                    </span>
+
+                    <button
+                      type="button"
+                      className="sidebar-channel-join"
+                      onClick={async () => {
+                        const token = localStorage.getItem("token");
+
+                        try {
+                          const response = await fetch(
+                            `${API_URL}/messages/dm/conversations/${user._id}`,
+                            {
+                              method: "POST",
+                              headers: {
+                                Authorization: `Bearer ${token}`,
+                              },
+                            }
+                          );
+
+                          const data = await response.json();
+
+                          if (!response.ok) {
+                            throw new Error(data.message || "Failed to start conversation");
+                          }
+
+                          setDirectMessages((previous) => {
+                            if (previous.some((item) => item._id === user._id)) {
+                              return previous;
+                            }
+
+                            return [...previous, user].sort((a, b) =>
+                              a.username.localeCompare(b.username)
+                            );
+                          });
+
+                          onDMChange(user.username);
+                          setNewMessageOpen(false);
+                        } catch (error) {
+                          console.error("Start DM error:", error);
+                          setUsersError(error.message || "Could not start conversation");
+                        }
+                      }}
+                    >
+                      Message
+                    </button>
+                  </div>
+                ))}
+
+                {availableUsers.length === 0 && (
+                  <p className="sidebar-empty">
+                    No new users available to message.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

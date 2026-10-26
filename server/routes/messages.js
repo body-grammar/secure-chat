@@ -5,8 +5,149 @@ import Channel from "../models/Channel.js";
 import User from "../models/User.js";
 import sodium from "libsodium-wrappers";
 import { ReceiptIcon } from "lucide-react";
+import mongoose from "mongoose";
+import DMConversation from "../models/DMConversation.js";
 
 const router = express.Router();
+
+router.post("/dm/conversations/:userId", authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user.userId;
+    const selectedUserId = req.params.userId;
+
+    if (currentUserId === selectedUserId) {
+      return res.status(400).json({
+        message: "You cannot start a conversation with yourself",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(selectedUserId)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    const selectedUser = await User.findById(selectedUserId).select(
+      "_id username email"
+    );
+
+    if (!selectedUser) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const participants = [
+      new mongoose.Types.ObjectId(currentUserId),
+      new mongoose.Types.ObjectId(selectedUserId),
+    ];
+
+    const existingConversation = await DMConversation.findOne({
+      participants: { $all: participants, $size: 2 },
+    });
+
+    if (!existingConversation) {
+      await DMConversation.create({ participants });
+    }
+
+    return res.status(200).json({
+      message: "Conversation saved",
+      user: selectedUser,
+    });
+  } catch (error) {
+    console.error("Save DM conversation error:", error);
+
+    return res.status(500).json({
+      message: "Failed to save conversation",
+    });
+  }
+});
+
+// Get users with whom the current user has exchanged direct messages
+router.get("/dm/conversations", authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = new mongoose.Types.ObjectId(req.user.userId);
+
+    // Find explicitly selected DM conversations.
+    const savedConversations = await DMConversation.find({
+      participants: currentUserId,
+    })
+      .populate("participants", "username email")
+      .lean();
+
+    const savedUsers = savedConversations.flatMap((conversation) =>
+      conversation.participants
+        .filter(
+          (user) => user._id.toString() !== currentUserId.toString()
+        )
+        .map((user) => ({
+          _id: user._id,
+          username: user.username,
+          email: user.email,
+        }))
+    );
+
+    // Find users with whom the current user has exchanged messages.
+    const messagedUsers = await Message.aggregate([
+      {
+        $match: {
+          channel: { $exists: false },
+          $or: [
+            { sender: currentUserId },
+            { recipient: currentUserId },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $eq: ["$sender", currentUserId] },
+              "$recipient",
+              "$sender",
+            ],
+          },
+        },
+      },
+      { $match: { _id: { $ne: null } } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+      {
+        $project: {
+          _id: "$user._id",
+          username: "$user.username",
+          email: "$user.email",
+        },
+      },
+    ]);
+
+    // Combine both lists without duplicates.
+    const uniqueUsers = new Map();
+
+    [...savedUsers, ...messagedUsers].forEach((user) => {
+      uniqueUsers.set(user._id.toString(), user);
+    });
+
+    const conversations = [...uniqueUsers.values()].sort((a, b) =>
+      a.username.localeCompare(b.username)
+    );
+
+    return res.json({ conversations });
+  } catch (error) {
+    console.error("Fetch DM conversations error:", error);
+
+    return res.status(500).json({
+      message: "Failed to fetch DM conversations",
+    });
+  }
+});
 
 router.get("/dm/:userId", authMiddleware, async (req, res) => {
   try {
